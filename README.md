@@ -22,7 +22,11 @@ permissions:
 jobs:
   deploy-site:
     uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@v1
-    secrets: inherit
+    secrets:
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USER: ${{ secrets.FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_REMOTE_PATH: ${{ secrets.FTP_REMOTE_PATH }}
     with:
       site_url: ${{ vars.SITE_URL }}
 ```
@@ -32,7 +36,7 @@ Configure **Settings → Secrets and variables → Actions**:
 - **Secrets** (required): `FTP_HOST`, `FTP_USER`, `FTP_PASSWORD`, `FTP_REMOTE_PATH`
 - **Variables** (optional): `SITE_URL` — public URL such as `https://dev.example.com/` (not sensitive; shown in the deploy job summary)
 
-Use `secrets: inherit` so repository secrets are forwarded into the reusable workflow.
+Because this reusable workflow lives in **another** repository, the caller **cannot** use `secrets: inherit`. Map each secret under `secrets:` as shown above (same names on both sides).
 
 ### Required repository secrets
 
@@ -67,7 +71,11 @@ on:
 jobs:
   deploy-site:
     uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@v1
-    secrets: inherit
+    secrets:
+      FTP_HOST: ${{ secrets.FTP_HOST }}
+      FTP_USER: ${{ secrets.FTP_USER }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+      FTP_REMOTE_PATH: ${{ secrets.FTP_REMOTE_PATH }}
     with:
       dry_run: ${{ github.event.inputs.dry_run == 'true' }}
       clean_deploy: ${{ github.event.inputs.clean_deploy == 'true' }}

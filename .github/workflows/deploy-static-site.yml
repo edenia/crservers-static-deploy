@@ -1,6 +1,6 @@
 # crservers.com — reusable workflow: checkout caller repo -> pnpm install/build/verify -> FTP deploy.
 # Caller: uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@<ref>
-#          secrets: inherit
+# Cross-repo: map each FTP secret explicitly (secrets: inherit only works when caller and callee are the same repo).
 
 name: crservers.com static site deploy
 
