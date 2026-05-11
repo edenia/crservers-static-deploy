@@ -1,10 +1,12 @@
-# static-site-deploy
+# crservers.com — static site deploy (GitHub Actions)
 
-Reusable GitHub Actions workflow for Edenia / **crservers** customers: build a static site (e.g. Next.js `output: "export"`) and deploy with **FTP/FTPS** via [SamKirkland/FTP-Deploy-Action](https://github.com/SamKirkland/FTP-Deploy-Action).
+Official **crservers.com** reusable workflow for sites we host: build a static export (for example Next.js `output: "export"`) and publish over **FTP/FTPS** using [SamKirkland/FTP-Deploy-Action](https://github.com/SamKirkland/FTP-Deploy-Action).
 
-## Usage
+This repository is maintained by **Edenia** for the **crservers.com** hosting product. Customer application repos stay thin: they call this workflow and supply FTP secrets.
 
-In the **customer repository**, add a workflow that calls this repo (replace the ref with a **pinned tag** once you publish one, e.g. `@v1`):
+## Usage (customer repository)
+
+Add a workflow that references this repo (pin a **tag** such as `@v1` in production instead of `@main`):
 
 ```yaml
 name: Deploy static site
@@ -19,7 +21,7 @@ permissions:
 
 jobs:
   deploy-site:
-    uses: edenia/static-site-deploy/.github/workflows/deploy-static-site.yml@main
+    uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@main
     secrets: inherit
     with:
       deployment_url: ${{ vars.SITE_URL }}
@@ -29,22 +31,22 @@ jobs:
 
 | Secret | Description |
 |--------|-------------|
-| `FTP_HOST` | FTP/FTPS hostname |
+| `FTP_HOST` | crservers FTP/FTPS hostname |
 | `FTP_USER` | FTP username |
 | `FTP_PASSWORD` | FTP password |
-| `FTP_REMOTE_PATH` | Remote directory — **must end with `/`** (e.g. `public_html/site/`) |
+| `FTP_REMOTE_PATH` | Remote directory — **must end with `/`** (for example `public_html/yoursite/`) |
 
-Use `secrets: inherit` so the caller forwards these to the reusable workflow.
+Use `secrets: inherit` so the caller forwards these secrets into the reusable workflow.
 
 ### Optional repository variables
 
 | Variable | Description |
 |----------|-------------|
-| `SITE_URL` | Pass as `deployment_url` so the GitHub **environment** link points at the live site |
+| `SITE_URL` | Public site URL (for example `https://www.example.com`); passed as `deployment_url` so the GitHub **environment** link opens the live site |
 
 ### Manual runs (dry run / clean deploy)
 
-Add `workflow_dispatch` and forward booleans as strings (`github.event.inputs` is always string-valued):
+Add `workflow_dispatch` and forward booleans using string comparisons (`github.event.inputs` values are strings):
 
 ```yaml
 on:
@@ -59,7 +61,7 @@ on:
 
 jobs:
   deploy-site:
-    uses: edenia/static-site-deploy/.github/workflows/deploy-static-site.yml@main
+    uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@main
     secrets: inherit
     with:
       dry_run: ${{ github.event.inputs.dry_run == 'true' }}
@@ -90,30 +92,50 @@ On `push`, those comparisons are false because the inputs are absent.
 | `dry_run` | `false` | FTP no-op |
 | `clean_deploy` | `false` | Wipes remote `FTP_REMOTE_PATH` |
 
-## Publishing (Edenia)
+## Publishing (Edenia / crservers.com)
 
-Create `github.com/edenia/static-site-deploy` from this tree (paths shown match a local clone next to a client site):
+Canonical remote:
+
+`git@github.com:edenia/crservers-static-deploy.git`
+
+### Repo already exists on GitHub (empty or with a README)
+
+From your local clone of this directory:
 
 ```bash
-cd edenia-static-site-deploy
-git init
-git add .
-git commit -m "Initial reusable static site deploy workflow"
-gh repo create edenia/static-site-deploy --public --source=. --remote=origin --push
+cd crservers-static-deploy
+git remote add origin git@github.com:edenia/crservers-static-deploy.git   # skip if origin already set
+git branch -M main
+git add -A && git status
+git commit -am "crservers.com static site deploy reusable workflow"   # if you have local changes
+git push -u origin main
 git tag v1 && git push origin v1
 ```
 
-Use a **public** repo if customer sites live in other GitHub orgs or accounts; otherwise callers cannot resolve `uses: edenia/static-site-deploy/...` unless you use Enterprise access controls you already trust.
+If GitHub created a first commit (for example a default `README.md`) and `git push` is rejected, run `git fetch origin` and either merge with `git pull origin main --allow-unrelated-histories` and resolve conflicts, or coordinate with your team before any force push.
+
+### Create the repo from scratch with GitHub CLI
+
+```bash
+cd crservers-static-deploy
+git init
+git add .
+git commit -m "crservers.com static site deploy reusable workflow"
+gh repo create edenia/crservers-static-deploy --public --source=. --remote=origin --push
+git tag v1 && git push origin v1
+```
+
+Use a **public** repo if customer sites live in other GitHub orgs or accounts; otherwise callers cannot resolve `uses: edenia/crservers-static-deploy/...` unless you rely on Enterprise or org access you already control.
 
 ## Versioning
 
-Tag stable commits (e.g. `v1`, `v1.0.0`) and pin customer workflows to that tag instead of `@main`.
+Tag stable commits (for example `v1`, `v1.0.0`) and pin customer workflows to that tag instead of `@main`.
 
 ## Security
 
-- Do not pass untrusted user input into `install_command`, `build_command`, or `verify_command` inputs.
+- Do not pass untrusted user input into `install_command`, `build_command`, or `verify_command`.
 - `clean_deploy` deletes the entire remote `FTP_REMOTE_PATH`; use only for intentional full resets.
 
 ## License
 
-MIT
+MIT (see `LICENSE`).
