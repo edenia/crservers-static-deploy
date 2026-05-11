@@ -23,11 +23,11 @@ jobs:
   deploy-site:
     uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@v1
     secrets: inherit
-    with:
-      deployment_url: ${{ vars.SITE_URL }}
 ```
 
-### Required secrets (repository or environment)
+Configure everything under **Settings → Secrets and variables → Actions → Secrets** in the customer repository (no GitHub Environments, no Actions **Variables** required for this workflow).
+
+### Required repository secrets
 
 | Secret | Description |
 |--------|-------------|
@@ -36,13 +36,13 @@ jobs:
 | `FTP_PASSWORD` | FTP password |
 | `FTP_REMOTE_PATH` | Remote directory — **must end with `/`** (for example `public_html/yoursite/`) |
 
-Use `secrets: inherit` so the caller forwards these secrets into the reusable workflow.
+### Optional repository secret
 
-### Optional repository variables
+| Secret | Description |
+|--------|-------------|
+| `SITE_URL` | Public site URL (for example `https://dev.example.com`). Stored only for your runbook or future workflow steps; it is **not** printed to logs. |
 
-| Variable | Description |
-|----------|-------------|
-| `SITE_URL` | Public site URL (for example `https://www.example.com`); passed as `deployment_url` so the GitHub **environment** link opens the live site |
+Use `secrets: inherit` on the caller job so these repository secrets are forwarded into the reusable workflow.
 
 ### Manual runs (dry run / clean deploy)
 
@@ -66,7 +66,6 @@ jobs:
     with:
       dry_run: ${{ github.event.inputs.dry_run == 'true' }}
       clean_deploy: ${{ github.event.inputs.clean_deploy == 'true' }}
-      deployment_url: ${{ vars.SITE_URL }}
 ```
 
 On `push`, those comparisons are false because the inputs are absent.
@@ -87,8 +86,6 @@ On `push`, those comparisons are false because the inputs are absent.
 | `ftp_protocol` | `ftps` | |
 | `ftp_local_dir` | `./out/` | Must end with `/` |
 | `ftp_timeout_ms` | `1200000` | |
-| `production_environment` | `production` | GitHub Environment name |
-| `deployment_url` | *(empty)* | e.g. `vars.SITE_URL` from caller |
 | `dry_run` | `false` | FTP no-op |
 | `clean_deploy` | `false` | Wipes remote `FTP_REMOTE_PATH` |
 
