@@ -4,6 +4,8 @@ Official **crservers.com** reusable workflow for sites we host: build a static e
 
 This repository is maintained by **Edenia** for the **crservers.com** hosting product. Customer application repos stay thin: they call this workflow and supply FTP secrets.
 
+Customer repos should set **`packageManager`** in `package.json` (for example `"packageManager": "pnpm@9.15.9"`). `pnpm/action-setup` reads that field and no separate pnpm version is passed from the workflow (avoids mismatch with a pinned major in CI).
+
 ## Usage (customer repository)
 
 Add a workflow that references this repo (pin a **tag** such as `@v1` in production instead of `@main`):
@@ -89,7 +91,6 @@ On `push`, those comparisons are false because the inputs are absent.
 | Input | Default | Notes |
 |-------|---------|--------|
 | `node_version` | `20` | |
-| `pnpm_version` | `9` | |
 | `install_command` | `pnpm install --frozen-lockfile` | Trusted maintainer input |
 | `build_command` | `pnpm build` | Trusted maintainer input |
 | `verify_command` | `pnpm run verify:static-out` | Skipped if `skip_verify: true` |

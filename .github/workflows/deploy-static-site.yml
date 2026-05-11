@@ -12,11 +12,6 @@ on:
         type: string
         required: false
         default: "20"
-      pnpm_version:
-        description: pnpm major version for pnpm/action-setup
-        type: string
-        required: false
-        default: "9"
       install_command:
         description: Install dependencies (trusted — repo maintainers only)
         type: string
@@ -107,8 +102,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: ${{ inputs.pnpm_version }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
