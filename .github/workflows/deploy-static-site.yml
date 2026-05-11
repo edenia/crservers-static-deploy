@@ -73,6 +73,11 @@ on:
         type: boolean
         required: false
         default: false
+      site_url:
+        description: Optional public site URL for run summaries (pass vars.SITE_URL from caller — not sensitive)
+        type: string
+        required: false
+        default: ""
     secrets:
       FTP_HOST:
         required: true
@@ -82,9 +87,6 @@ on:
         required: true
       FTP_REMOTE_PATH:
         required: true
-      SITE_URL:
-        description: Optional public site URL (store as a repository secret in the customer repo)
-        required: false
 
 permissions:
   contents: read
@@ -191,6 +193,7 @@ jobs:
           SHA: ${{ github.sha }}
           DRY_RUN: ${{ inputs.dry_run }}
           CLEAN_DEPLOY: ${{ inputs.clean_deploy }}
+          SITE_URL: ${{ inputs.site_url }}
         run: |
           {
             echo "## crservers.com deploy"
@@ -198,4 +201,5 @@ jobs:
             echo "- **Ref:** \`${REF}\` @ \`${SHA}\`"
             echo "- **Dry run:** ${DRY_RUN}"
             echo "- **Clean slate:** ${CLEAN_DEPLOY}"
+            if [ -n "$SITE_URL" ]; then echo "- **Public site:** ${SITE_URL}"; fi
           } >> "$GITHUB_STEP_SUMMARY"

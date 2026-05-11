@@ -23,9 +23,16 @@ jobs:
   deploy-site:
     uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@v1
     secrets: inherit
+    with:
+      site_url: ${{ vars.SITE_URL }}
 ```
 
-Configure everything under **Settings → Secrets and variables → Actions → Secrets** in the customer repository (no GitHub Environments, no Actions **Variables** required for this workflow).
+Configure **Settings → Secrets and variables → Actions**:
+
+- **Secrets** (required): `FTP_HOST`, `FTP_USER`, `FTP_PASSWORD`, `FTP_REMOTE_PATH`
+- **Variables** (optional): `SITE_URL` — public URL such as `https://dev.example.com/` (not sensitive; shown in the deploy job summary)
+
+Use `secrets: inherit` so repository secrets are forwarded into the reusable workflow.
 
 ### Required repository secrets
 
@@ -36,13 +43,11 @@ Configure everything under **Settings → Secrets and variables → Actions → 
 | `FTP_PASSWORD` | FTP password |
 | `FTP_REMOTE_PATH` | Remote directory — **must end with `/`** (for example `public_html/yoursite/`) |
 
-### Optional repository secret
+### Optional repository variable
 
-| Secret | Description |
-|--------|-------------|
-| `SITE_URL` | Public site URL (for example `https://dev.example.com`). Stored only for your runbook or future workflow steps; it is **not** printed to logs. |
-
-Use `secrets: inherit` on the caller job so these repository secrets are forwarded into the reusable workflow.
+| Variable | Description |
+|----------|-------------|
+| `SITE_URL` | Pass as `site_url` input (`vars.SITE_URL` in the caller). Used only for the workflow summary link text — **FTP deploy does not require it**. |
 
 ### Manual runs (dry run / clean deploy)
 
@@ -66,6 +71,7 @@ jobs:
     with:
       dry_run: ${{ github.event.inputs.dry_run == 'true' }}
       clean_deploy: ${{ github.event.inputs.clean_deploy == 'true' }}
+      site_url: ${{ vars.SITE_URL }}
 ```
 
 On `push`, those comparisons are false because the inputs are absent.
@@ -88,6 +94,7 @@ On `push`, those comparisons are false because the inputs are absent.
 | `ftp_timeout_ms` | `1200000` | |
 | `dry_run` | `false` | FTP no-op |
 | `clean_deploy` | `false` | Wipes remote `FTP_REMOTE_PATH` |
+| `site_url` | *(empty)* | Pass `vars.SITE_URL` from caller for summary |
 
 ## Publishing (Edenia / crservers.com)
 
