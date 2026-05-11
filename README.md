@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   deploy-site:
-    uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@main
+    uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@v1
     secrets: inherit
     with:
       deployment_url: ${{ vars.SITE_URL }}
@@ -61,7 +61,7 @@ on:
 
 jobs:
   deploy-site:
-    uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@main
+    uses: edenia/crservers-static-deploy/.github/workflows/deploy-static-site.yml@v1
     secrets: inherit
     with:
       dry_run: ${{ github.event.inputs.dry_run == 'true' }}
