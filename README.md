@@ -145,6 +145,43 @@ Use a **public** repo if customer sites live in other GitHub orgs or accounts; o
 - **GitHub Actions:** Node runs only on the **runner** to install dependencies, run `next build`, and upload `out/` over FTP. Official actions are pinned to **v5+** / **FTP-Deploy v4.4+** so they use the **Node 24** action runtime (avoids the Node 20 deprecation on GitHub-hosted runners).
 - **crservers (production):** Only the **static files** under your `FTP_REMOTE_PATH` are needed — typically **Apache** serves `index.html`, assets, and `.htaccess`. **You do not need Node.js on the hosting account** for this setup.
 
+### Recommended `public/.htaccess` (Next static export)
+
+Commit this next to your app as **`public/.htaccess`** so it is copied into **`out/.htaccess`** on build. Directives are wrapped in **`IfModule`** so missing modules do not break the site.
+
+```apache
+# Static Next export on Apache (crservers / shared hosting)
+DirectoryIndex index.html
+Options -Indexes
+
+# Compression when the host has mod_deflate (no-op if missing)
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml
+  AddOutputFilterByType DEFLATE text/css application/javascript application/json
+  AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# Long cache for Next.js fingerprinted assets under /_next/static/
+<IfModule mod_headers.c>
+  <LocationMatch "^/_next/static/">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </LocationMatch>
+</IfModule>
+
+# Expires for common image/font types (complements Cache-Control above)
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType image/avif "access plus 30 days"
+  ExpiresByType image/webp "access plus 30 days"
+  ExpiresByType image/jpeg "access plus 30 days"
+  ExpiresByType image/png "access plus 30 days"
+  ExpiresByType image/gif "access plus 30 days"
+  ExpiresByType image/svg+xml "access plus 30 days"
+  ExpiresByType font/woff2 "access plus 180 days"
+  ExpiresByType font/woff "access plus 180 days"
+</IfModule>
+```
+
 ## Versioning
 
 Tag stable commits (for example `v1`, `v1.0.0`) and pin customer workflows to that tag instead of `@main`.
