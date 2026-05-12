@@ -90,7 +90,7 @@ On `push`, those comparisons are false because the inputs are absent.
 
 | Input | Default | Notes |
 |-------|---------|--------|
-| `node_version` | `20` | |
+| `node_version` | `22` | Node used for `pnpm install` / `pnpm build` on the runner |
 | `install_command` | `pnpm install --frozen-lockfile` | Trusted maintainer input |
 | `build_command` | `pnpm build` | Trusted maintainer input |
 | `verify_command` | `pnpm run verify:static-out` | Skipped if `skip_verify: true` |
@@ -139,6 +139,11 @@ git tag v1 && git push origin v1
 ```
 
 Use a **public** repo if customer sites live in other GitHub orgs or accounts; otherwise callers cannot resolve `uses: edenia/crservers-static-deploy/...` unless you rely on Enterprise or org access you already control.
+
+## What runs where
+
+- **GitHub Actions:** Node runs only on the **runner** to install dependencies, run `next build`, and upload `out/` over FTP. Official actions are pinned to **v5+** / **FTP-Deploy v4.4+** so they use the **Node 24** action runtime (avoids the Node 20 deprecation on GitHub-hosted runners).
+- **crservers (production):** Only the **static files** under your `FTP_REMOTE_PATH` are needed — typically **Apache** serves `index.html`, assets, and `.htaccess`. **You do not need Node.js on the hosting account** for this setup.
 
 ## Versioning
 
