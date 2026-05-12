@@ -1,0 +1,85 @@
+Universal contact endpoint (PHP + InterWorx / crservers)
+=======================================================
+
+**Customers:** start with **`USERS-EASY-START.md`** (shortest path).
+
+**Edenia / crservers ops:** canonical folder to **rsync pre-copy** onto new InterWorx accounts:  
+`https://github.com/edenia/crservers-static-deploy/tree/main/static-site-contact`  
+(see `static-site-contact/README-EDENIA-OPS.md` there). See **`CANONICAL-SOURCE.txt`** in this repo for sync rules.
+
+Same `utils/contact-form/` bundle in **v0-architect-cr** and **ThePorkShop** — keep in sync with that canonical folder when you change PHP or Composer pins.
+
+What it does
+------------
+- Accepts **any form shape**: `POST` as `application/x-www-form-urlencoded`,
+  **multipart**, or **`application/json`** (flat object or `{ "fields": {…}, … }`).
+- Emails **one line per field** (`key: value`). Reserved: honeypots, captcha tokens,
+  keys starting with `__`.
+- **Reply-To** = first valid email found: optional `reply_to_field` in config, else
+  fields named `email`, `e-mail`, `mail`, …, else any value that looks like an email.
+- **Subject**: optional field `subject` (or `_subject` / `mail_subject`) — removed from
+  the body list; otherwise `default_mail_subject` / env `DEFAULT_MAIL_SUBJECT`.
+
+Secrets (SMTP auth to your mail server)
+---------------------------------------
+**Recommended:** set these in the hosting environment (or inject at deploy time) so
+nothing sensitive is in git:
+
+| Variable | Maps to |
+|----------|---------|
+| `SMTP_HOST` | Outbound server (e.g. mail.clientdomain.com) |
+| `SMTP_PORT` | Usually `587` (TLS) or `465` (SSL) |
+| `SMTP_SECURE` | `tls`, `ssl`, or empty |
+| `SMTP_USER` | Mailbox login |
+| `SMTP_PASSWORD` | Mailbox password |
+| `MAIL_FROM_EMAIL` | Envelope From (domain mailbox) |
+| `MAIL_FROM_NAME` | Display name (optional) |
+| `MAIL_TO` | Inbox that receives submissions |
+| `MAIL_TO_NAME` | Optional |
+| `TURNSTILE_SECRET` | If you enforce Turnstile |
+| `REDIRECT_SUCCESS_URL` | Non-AJAX redirect after send |
+| `DEFAULT_MAIL_SUBJECT` | When the form has no `subject` field |
+| `REPLY_TO_FIELD` | Exact field name if not `email` |
+
+Optional file **`/home/ACCOUNT/private/smtp.config.php`** merges first; **non-empty
+env vars override** the file (so you can keep only non-secret defaults in the file).
+
+You still need **`composer install --no-dev`** in the web root next to `contact.php`
+(PHPMailer + `vendor/`).
+
+GitHub Actions note
+--------------------
+Do **not** bake SMTP passwords into the static `out/` artifact. Typical pattern:
+SSH or panel step on the server that writes `../private/smtp.config.php` from secrets,
+**or** configure variables in InterWorx / PHP-FPM if your host exposes env to PHP.
+
+Front-end / v0
+---------------
+- **Classic HTML form:** `method="POST"` `action="/contact.php"` — on success, server
+  responds with **303** to `redirect_success_url`.
+- **fetch:** `POST` with `X-Requested-With: XMLHttpRequest` **or** `Accept: application/json`
+  — response JSON `{ "ok": true|false, "error": "…" }`.
+- **JSON body example:**
+  `{ "name": "Ada", "email": "ada@example.com", "message": "Hello", "subject": "Quote" }`
+- **Honeypot:** keep default trap fields **empty** (`company`, `website`, … — configurable).
+
+Limits (abuse control)
+----------------------
+- Up to **50** fields, **100** char keys, **8000** char values, **200k** char total body.
+- Simple **per-IP rate limit** (see code).
+
+Spam hardening (recommended)
+----------------------------
+**Layer defenses** — nothing below replaces the others.
+
+1. **Cloudflare Turnstile** — If `TURNSTILE_SECRET` / `turnstile_secret` is set, every POST must include **`cf-turnstile-response`**. Add the Turnstile widget on the page; keep the **site key** public, secret only on the server. Easiest high-impact bot filter.
+
+2. **Honeypots** — Keep hidden fields **`company`**, **`website`**, **`url`**, etc. **empty** (see `honeypot_fields` in config). Do not reuse those names for real data.
+
+3. **Edge / WAF** — If the site uses **Cloudflare** in front of the origin, use bot / rate rules on **`POST /contact.php`** where practical so junk never hits PHP.
+
+4. **Monitor** — Watch `MAIL_TO` volume and bounce patterns; if abuse spikes, enable or tighten Turnstile first, then review rate limits in `contact.php` if you fork it.
+
+5. **Do not rely on** honeypots or IP limits alone for high-traffic or targeted abuse.
+
+**v0 / front-end builders:** paste **`utils/contact-form/V0-FORM-PROMPT.md`** into v0 so generated forms match this contract (URL, headers, honeypot, optional Turnstile).

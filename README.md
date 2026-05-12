@@ -145,6 +145,15 @@ Use a **public** repo if customer sites live in other GitHub orgs or accounts; o
 - **GitHub Actions:** Node runs only on the **runner** to install dependencies, run `next build`, and upload `out/` over FTP. Official actions are pinned to **v5+** / **FTP-Deploy v4.4+** so they use the **Node 24** action runtime (avoids the Node 20 deprecation on GitHub-hosted runners).
 - **crservers (production):** Only the **static files** under your `FTP_REMOTE_PATH` are needed — typically **Apache** serves `index.html`, assets, and `.htaccess`. **You do not need Node.js on the hosting account** for this setup.
 
+### Contact forms (PHP mail on the same account)
+
+For **contact / inquiry forms** that POST to **`/contact.php`** with SMTP auth (InterWorx mailboxes), Edenia maintains a **ready-to-copy bundle** in this repo:
+
+- Folder: **`static-site-contact/`** — copy into the customer’s **`public_html`** (see **`static-site-contact/README-EDENIA-OPS.md`**).
+- Customer quick start: **`static-site-contact/USERS-EASY-START.md`** — run **`install-on-server.sh`**, then edit **`../private/smtp.config.php`**.
+
+Customer Next.js repos may also embed the same files under **`utils/contact-form/`**; the canonical copy for **account provisioning** lives **here** (`static-site-contact/`).
+
 ### Recommended `public/.htaccess` (Next static export)
 
 Commit this next to your app as **`public/.htaccess`** so it is copied into **`out/.htaccess`** on build. Directives are wrapped in **`IfModule`** so missing modules do not break the site.
