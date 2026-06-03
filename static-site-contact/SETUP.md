@@ -1,7 +1,7 @@
 # First-time setup (InterWorx / crservers static site)
 
 Do this **once per SiteWorx account** (or whenever SMTP credentials change).  
-Applies to **architect.cr** and **The Pork Shop** (same `utils/contact-form/` bundle).
+Applies to any static or Next.js site on crservers that uses the `utils/contact-form/` bundle (copied from this repo).
 
 ## Fast path (most customers)
 
@@ -126,14 +126,14 @@ If **`require_reply_email`** is true (default), a valid **`email`** field (or `r
 
 ---
 
-## 8. Front-end (already wired on architect.cr)
+## 8. Front-end
 
 The site form must **POST** to **`/contact.php`** with a real **`email`** (and honeypots left empty).  
 See **`OPERATOR.txt`** for JSON vs form, honeypots, and optional Turnstile.
 
-**Generating forms in v0:** paste the prompt from **`utils/contact-form/V0-FORM-PROMPT.md`** (starts with “You are building…”) so the model matches headers, honeypot, and optional Turnstile.
+**Generating forms in v0:** paste the prompt from **`V0-FORM-PROMPT.md`** (or the copy in the customer repo’s `utils/contact-form/`) so the model matches headers, honeypot, and optional Turnstile.
 
-The Pork Shop ships **`contact.php`** in the export; add a form when you want mail from that site.
+Copy **`contact.php`** (and Composer files) into the app’s **`public/`** before build so the static export and FTP deploy include them in **`out/`**.
 
 ---
 

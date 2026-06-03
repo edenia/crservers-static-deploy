@@ -4,13 +4,15 @@ This folder is the **canonical** mail-endpoint bundle for static sites on **crse
 
 ## What to copy to a new account
 
-From a clone of **edenia/crservers-static-deploy**, sync into the account’s **document root** (usually `~/public_html/`):
+From a clone of **edenia/crservers-static-deploy**, sync into the domain **document root** on the account. On InterWorx this is often **`~/example.com/html/`** (FTP-relative: `example.com/html/` — see root README [InterWorx paths](../README.md#interworx--crservers-ftp-paths)). Replace `DOMAIN` below.
 
 ```bash
-# Example: from your workstation (replace HOST and remote path)
+# Example: from your workstation (replace HOST, USER, DOMAIN)
+REMOTE_WEBROOT='USER@HOST:~/DOMAIN/html/'
+
 rsync -avz --delete-excluded \
   --exclude '.git' \
-  ./static-site-contact/ 'USER@HOST:~/public_html/'
+  ./static-site-contact/ "$REMOTE_WEBROOT"
 ```
 
 Prefer **`--delete-excluded`** only if you intend to mirror exactly; otherwise omit `--delete` to avoid removing unrelated site files. **Safer** pattern — copy only bundle files:
@@ -23,13 +25,13 @@ rsync -avz \
   ./static-site-contact/install-on-server.sh \
   ./static-site-contact/smtp.config.example.php \
   ./static-site-contact/USERS-EASY-START.md \
-  'USER@HOST:~/public_html/'
+  "$REMOTE_WEBROOT"
 ```
 
 Then SSH:
 
 ```bash
-ssh USER@HOST 'cd ~/public_html && chmod +x install-on-server.sh && bash install-on-server.sh'
+ssh USER@HOST 'cd ~/DOMAIN/html && chmod +x install-on-server.sh && bash install-on-server.sh'
 ```
 
 ## After copy

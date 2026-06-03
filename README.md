@@ -117,6 +117,7 @@ Use this when onboarding a new static or Next.js customer repository.
 4. **Caller workflow** — `.github/workflows/deploy-static-site.yml` calling `edenia/crservers-static-deploy/.../deploy-static-site.yml@v1` with FTP secrets mapped explicitly
 5. **GitHub Actions** — secrets `FTP_*`; optional variable `SITE_URL` (public URL for deploy summaries only)
 6. **First deploy** — run workflow with **dry_run** once, then production; confirm the live site (not only a green Actions run)
+7. **Optional contact form** — copy **`static-site-contact/`** into `public/` (or pre-provision on the server), configure SMTP per **`USERS-EASY-START.md`**
 
 ## InterWorx / crservers FTP paths
 
@@ -204,14 +205,22 @@ Use a **public** repo if customer sites live in other GitHub orgs or accounts; o
 - **GitHub Actions:** Node runs only on the **runner** to install dependencies, run `next build`, and upload `out/` over FTP. Official actions are pinned to **v5+** / **FTP-Deploy v4.4+** so they use the **Node 24** action runtime (avoids the Node 20 deprecation on GitHub-hosted runners).
 - **crservers (production):** Only the **static files** under your `FTP_REMOTE_PATH` are needed — typically **Apache** serves `index.html`, assets, and `.htaccess`. **You do not need Node.js on the hosting account** for this setup.
 
-### Contact forms (PHP mail on the same account)
+### Contact forms (SMTP mail for static sites)
 
-For **contact / inquiry forms** that POST to **`/contact.php`** with SMTP auth (InterWorx mailboxes), Edenia maintains a **ready-to-copy bundle** in this repo:
+Static exports cannot send mail from the browser alone. For **contact / inquiry forms**, crservers hosts a small **PHP + PHPMailer** endpoint that authenticates to an **InterWorx mailbox** over SMTP.
 
-- Folder: **`static-site-contact/`** — copy into the customer’s **`public_html`** (see **`static-site-contact/README-EDENIA-OPS.md`**).
-- Customer quick start: **`static-site-contact/USERS-EASY-START.md`** — run **`install-on-server.sh`**, then edit **`../private/smtp.config.php`**.
+| Piece | Location |
+|-------|----------|
+| Canonical bundle | **`static-site-contact/`** in this repo |
+| Edenia ops (rsync / pre-provision) | **`static-site-contact/README-EDENIA-OPS.md`** |
+| Customer setup | **`static-site-contact/USERS-EASY-START.md`** → `install-on-server.sh`, then **`../private/smtp.config.php`** (or env vars) |
+| Front-end contract / v0 prompt | **`static-site-contact/V0-FORM-PROMPT.md`**, **`OPERATOR.txt`** |
 
-Customer Next.js repos may also embed the same files under **`utils/contact-form/`**; the canonical copy for **account provisioning** lives **here** (`static-site-contact/`).
+**Deploy with the static site:** copy `contact.php`, `composer.json`, and `composer.lock` into the app’s **`public/`** so `pnpm build` places them in **`out/`** and the [FTP workflow](#usage-customer-repository) uploads them to the domain `html/` (see [InterWorx paths](#interworx--crservers-ftp-paths)). On the server, run **`composer install --no-dev`** once in that directory (or use **`install-on-server.sh`** after Edenia pre-copies the bundle).
+
+**Secrets:** never commit SMTP passwords. Use **`~/private/smtp.config.php`** and/or hosting env vars (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_TO`, optional `TURNSTILE_SECRET`). Optional **Cloudflare Turnstile** for public forms.
+
+Customer repos may mirror the bundle under **`utils/contact-form/`**; treat **`static-site-contact/`** here as the source of truth (`CANONICAL-SOURCE.txt`).
 
 ### Recommended `public/.htaccess` (Next static export)
 

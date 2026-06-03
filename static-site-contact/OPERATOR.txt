@@ -7,7 +7,7 @@ Universal contact endpoint (PHP + InterWorx / crservers)
 `https://github.com/edenia/crservers-static-deploy/tree/main/static-site-contact`  
 (see `static-site-contact/README-EDENIA-OPS.md` there). See **`CANONICAL-SOURCE.txt`** in this repo for sync rules.
 
-Same `utils/contact-form/` bundle in **v0-architect-cr** and **ThePorkShop** — keep in sync with that canonical folder when you change PHP or Composer pins.
+Customer site repos may mirror this bundle under **`utils/contact-form/`** — keep them in sync with **`static-site-contact/`** here when PHP or Composer pins change.
 
 What it does
 ------------

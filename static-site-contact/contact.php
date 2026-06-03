@@ -160,6 +160,20 @@ function scalar_to_string($v): string
 
 /**
  * @param array<string, mixed> $raw
+ */
+function extract_turnstile_token(array $raw): string
+{
+    foreach ($raw as $key => $val) {
+        if (strtolower((string) $key) === 'cf-turnstile-response') {
+            return scalar_to_string($val);
+        }
+    }
+
+    return '';
+}
+
+/**
+ * @param array<string, mixed> $raw
  * @param list<string> $honeypots lowercased names
  * @return array{fields: array<string, string>, turnstile: string}
  */
@@ -170,10 +184,7 @@ function normalize_fields(array $raw, array $honeypots): array
         $honeypots
     )));
 
-    $turnstile = '';
-    if (isset($raw['cf-turnstile-response'])) {
-        $turnstile = trim((string) $raw['cf-turnstile-response']);
-    }
+    $turnstile = extract_turnstile_token($raw);
 
     $fields = [];
     $count = 0;
@@ -342,7 +353,7 @@ $times[] = $now;
 $turnstileSecret = isset($cfg['turnstile_secret']) ? trim((string) $cfg['turnstile_secret']) : '';
 $parsed = normalize_fields($raw, $honeypots);
 $fields = $parsed['fields'];
-$turnstileToken = $parsed['turnstile'] !== '' ? $parsed['turnstile'] : trim((string) ($raw['cf-turnstile-response'] ?? ''));
+$turnstileToken = $parsed['turnstile'] !== '' ? $parsed['turnstile'] : extract_turnstile_token($raw);
 
 if ($turnstileSecret !== '') {
     if ($turnstileToken === '') {
