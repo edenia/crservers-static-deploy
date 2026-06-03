@@ -138,6 +138,62 @@ function rate_save(string $file, array $attempts, array $success): void
 }
 
 /**
+ * Visitor IP for rate limits, logging, and Turnstile verify.
+ * When the site is behind Cloudflare, use CF-Connecting-IP only if CF-Ray is present
+ * (avoids trusting forged headers on direct-to-origin requests).
+ *
+ * @param array<string, mixed> $cfg
+ */
+function resolve_client_ip(array $cfg): string
+{
+    $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'));
+    $useCf = !isset($cfg['trust_cloudflare_ip']) || $cfg['trust_cloudflare_ip'] !== false;
+    if ($useCf && !empty($_SERVER['HTTP_CF_RAY'])) {
+        foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_CF_CONNECTING_IPV6'] as $hdr) {
+            if (empty($_SERVER[$hdr])) {
+                continue;
+            }
+            $cf = trim((string) $_SERVER[$hdr]);
+            if (filter_var($cf, FILTER_VALIDATE_IP)) {
+                return $cf;
+            }
+        }
+    }
+    if (!empty($cfg['trust_forwarded_for']) && $cfg['trust_forwarded_for'] === true
+        && !empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $parts = array_map('trim', explode(',', (string) $_SERVER['HTTP_X_FORWARDED_FOR']));
+        foreach ($parts as $candidate) {
+            if (filter_var($candidate, FILTER_VALIDATE_IP)) {
+                return $candidate;
+            }
+        }
+    }
+
+    return $remote !== '' ? $remote : '0.0.0.0';
+}
+
+/**
+ * Per-install, per-site rate-limit state (not shared across vhosts on the same host).
+ *
+ * @param array<string, mixed> $cfg
+ */
+function rate_limit_file_path(string $clientIp, array $cfg): string
+{
+    $siteKey = isset($cfg['rate_limit_site_id']) ? trim((string) $cfg['rate_limit_site_id']) : '';
+    if ($siteKey === '') {
+        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        $siteKey = $host !== '' ? preg_replace('/[^a-zA-Z0-9._-]+/', '_', $host) : 'default';
+    }
+    $dir = __DIR__ . '/.rate-limit';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0700, true);
+        @file_put_contents($dir . '/.htaccess', "Require all denied\n");
+    }
+
+    return $dir . '/rl-' . $siteKey . '-' . hash('sha256', $clientIp) . '.json';
+}
+
+/**
  * Non-empty getenv overrides $cfg keys (SMTP secrets from hosting / injectors).
  *
  * @param array<string, mixed> $cfg
@@ -405,8 +461,8 @@ foreach ($honeypots as $hp) {
     }
 }
 
-$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-$rateFile = sys_get_temp_dir() . '/cr-contact-' . hash('sha256', $ip) . '.json';
+$ip = resolve_client_ip($cfg);
+$rateFile = rate_limit_file_path($ip, $cfg);
 $now = time();
 $window = 3600;
 $maxAttemptsPerWindow = 40;

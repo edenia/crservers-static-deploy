@@ -66,7 +66,7 @@ Front-end / v0
 Limits (abuse control)
 ----------------------
 - Up to **50** fields, **100** char keys, **8000** char values, **200k** char total body.
-- **Per-IP rate limit:** up to **40 POST attempts** per hour (any outcome) and up to **8 successful sends** per hour (see `contact.php`).
+- **Per-IP rate limit:** up to **40 POST attempts** per hour and **8 successful sends** per hour. Counters live in **`.rate-limit/`** next to `contact.php` (scoped by `HTTP_HOST` or `rate_limit_site_id`). Behind **Cloudflare**, visitor IP comes from **CF-Connecting-IP** when **CF-Ray** is present.
 
 Spam hardening (recommended)
 ----------------------------
