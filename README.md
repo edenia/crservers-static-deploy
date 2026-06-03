@@ -107,7 +107,7 @@ On `push`, those comparisons are false because the inputs are absent.
 
 ## New site checklist (customer repo)
 
-Use this when onboarding a static/Next site (example: [v0-sebicr](https://github.com/dethaniel-oss/v0-sebicr)).
+Use this when onboarding a new static or Next.js customer repository.
 
 1. **Next.js static export** — in `next.config` (or `next.config.mjs`):
    - `output: 'export'`
@@ -120,15 +120,15 @@ Use this when onboarding a static/Next site (example: [v0-sebicr](https://github
 
 ## InterWorx / crservers FTP paths
 
-On **InterWorx** shared hosting, the FTP user is usually **chrooted to the account home** (e.g. `/home/sebicrco/`). [FTP-Deploy-Action](https://github.com/SamKirkland/FTP-Deploy-Action) treats `FTP_REMOTE_PATH` as **relative to that FTP root**, not as an absolute path on the server.
+On **InterWorx** shared hosting, the FTP user is usually **chrooted to the account home** (e.g. `/home/ACCOUNT/`). [FTP-Deploy-Action](https://github.com/SamKirkland/FTP-Deploy-Action) treats `FTP_REMOTE_PATH` as **relative to that FTP root**, not as an absolute path on the server.
 
 ### Use a relative path (required)
 
 | `FTP_REMOTE_PATH` value | Result |
 |-------------------------|--------|
-| `sebicr.com/html/` | Correct — files land in `/home/sebicrco/sebicr.com/html/` |
-| `/home/sebicrco/sebicr.com/html/` | Wrong — uploads often go outside the tree you see over SSH; Actions may still succeed |
-| `/home/sebicrco/html/` | Wrong for the primary domain — often the account default “Test Page”, not the domain vhost |
+| `example.com/html/` | Correct — files land in `/home/ACCOUNT/example.com/html/` |
+| `/home/ACCOUNT/example.com/html/` | Wrong — uploads often go outside the tree you see over SSH; Actions may still succeed |
+| `/home/ACCOUNT/html/` | Wrong for the primary domain — often the account default “Test Page”, not the domain vhost |
 
 **Rule:** Set `FTP_REMOTE_PATH` to the domain’s web root **relative to the account home**, with a trailing slash. Confirm in **SiteWorx** (domain → home / document root) or on the server:
 
@@ -145,7 +145,7 @@ ls /home/ACCOUNT/DOMAIN/html/
 ```text
 /home/ACCOUNT/                 ← FTP login root
 ├── html/                      ← account default page (crservers “Test Page”) — usually NOT the live domain
-└── DOMAIN/                    ← e.g. sebicr.com/
+└── DOMAIN/                    ← e.g. example.com/
     ├── html/                  ← document root for https://DOMAIN/  ← deploy here
     └── iworx-backup/
 ```
@@ -163,10 +163,6 @@ Some accounts use `domains/DOMAIN/html/` instead of `DOMAIN/html/`. Always take 
 **Verify the correct folder:** after deploy, `index.html` in the domain `html/` should be small (static export) and include `_next/`. Check the public URL `Last-Modified` or page title changes.
 
 **Verify the public site:** `curl -sI https://DOMAIN/ | grep -i last-modified` and confirm content matches the app (not the default hosting page).
-
-### Reference deployment
-
-[sebicr.com](https://sebicr.com/) — repo `dethaniel-oss/v0-sebicr`, working `FTP_REMOTE_PATH`: `sebicr.com/html/`.
 
 ## Publishing (Edenia / crservers.com)
 
