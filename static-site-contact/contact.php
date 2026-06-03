@@ -101,46 +101,119 @@ function rate_prune_timestamps(array $timestamps, int $now, int $window): array
 /**
  * @return array{attempts: list<int>, success: list<int>}
  */
-function rate_load(string $file, int $now, int $window): array
+function rate_decode_file(string $raw, int $now, int $window): array
 {
     $attempts = [];
     $success = [];
-    if (is_file($file)) {
-        $raw = @file_get_contents($file);
-        if ($raw !== false) {
-            $decoded = json_decode($raw, true);
-            if (is_array($decoded)) {
-                if (isset($decoded['attempts']) && is_array($decoded['attempts'])) {
-                    $attempts = rate_prune_timestamps($decoded['attempts'], $now, $window);
-                }
-                if (isset($decoded['success']) && is_array($decoded['success'])) {
-                    $success = rate_prune_timestamps($decoded['success'], $now, $window);
-                } elseif ($attempts === [] && array_is_list($decoded)) {
-                    $success = rate_prune_timestamps($decoded, $now, $window);
-                }
-            }
-        }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return ['attempts' => $attempts, 'success' => $success];
+    }
+    if (isset($decoded['attempts']) && is_array($decoded['attempts'])) {
+        $attempts = rate_prune_timestamps($decoded['attempts'], $now, $window);
+    }
+    if (isset($decoded['success']) && is_array($decoded['success'])) {
+        $success = rate_prune_timestamps($decoded['success'], $now, $window);
+    } elseif ($attempts === [] && array_is_list($decoded)) {
+        $success = rate_prune_timestamps($decoded, $now, $window);
     }
 
     return ['attempts' => $attempts, 'success' => $success];
 }
 
 /**
- * @param list<int> $attempts
- * @param list<int> $success
+ * @param callable(array{attempts: list<int>, success: list<int>}): void $mutator
  */
-function rate_save(string $file, array $attempts, array $success): void
+function rate_update_locked(string $file, int $now, int $window, callable $mutator): void
 {
-    @file_put_contents($file, json_encode([
-        'attempts' => $attempts,
-        'success' => $success,
-    ]), LOCK_EX);
+    $fp = @fopen($file, 'c+');
+    if ($fp === false) {
+        client_fail('Server busy. Please try again later.', 503);
+    }
+    if (!flock($fp, LOCK_EX)) {
+        fclose($fp);
+        client_fail('Server busy. Please try again later.', 503);
+    }
+    $raw = stream_get_contents($fp);
+    $rate = rate_decode_file($raw === false ? '' : $raw, $now, $window);
+    $mutator($rate);
+    $encoded = json_encode([
+        'attempts' => $rate['attempts'],
+        'success' => $rate['success'],
+    ]);
+    ftruncate($fp, 0);
+    rewind($fp);
+    if ($encoded !== false) {
+        fwrite($fp, $encoded);
+    }
+    fflush($fp);
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
+function ipv4_in_cidr(string $ip, string $cidr): bool
+{
+    if (strpos($ip, ':') !== false || strpos($cidr, ':') !== false) {
+        return false;
+    }
+    $parts = explode('/', $cidr, 2);
+    if (count($parts) !== 2) {
+        return false;
+    }
+    $subnet = ip2long($parts[0]);
+    $maskBits = (int) $parts[1];
+    $addr = ip2long($ip);
+    if ($subnet === false || $addr === false || $maskBits < 0 || $maskBits > 32) {
+        return false;
+    }
+    $mask = $maskBits === 0 ? 0 : (-1 << (32 - $maskBits));
+
+    return ($addr & $mask) === ($subnet & $mask);
+}
+
+/**
+ * Cloudflare published IPv4 ranges (https://www.cloudflare.com/ips-v4).
+ *
+ * @return list<string>
+ */
+function cloudflare_ipv4_cidrs(): array
+{
+    return [
+        '173.245.48.0/20',
+        '103.21.244.0/22',
+        '103.22.200.0/22',
+        '103.31.4.0/22',
+        '141.101.64.0/18',
+        '108.162.192.0/18',
+        '190.93.240.0/20',
+        '188.114.96.0/20',
+        '197.234.240.0/22',
+        '198.41.128.0/17',
+        '162.158.0.0/15',
+        '104.16.0.0/13',
+        '104.24.0.0/14',
+        '172.64.0.0/13',
+        '131.0.72.0/22',
+    ];
+}
+
+function remote_addr_is_cloudflare(string $remoteAddr): bool
+{
+    if (!filter_var($remoteAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        return false;
+    }
+    foreach (cloudflare_ipv4_cidrs() as $cidr) {
+        if (ipv4_in_cidr($remoteAddr, $cidr)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
  * Visitor IP for rate limits, logging, and Turnstile verify.
- * When the site is behind Cloudflare, use CF-Connecting-IP only if CF-Ray is present
- * (avoids trusting forged headers on direct-to-origin requests).
+ * CF-Connecting-IP is used only when REMOTE_ADDR is a Cloudflare edge (not forgeable via headers alone).
  *
  * @param array<string, mixed> $cfg
  */
@@ -148,7 +221,7 @@ function resolve_client_ip(array $cfg): string
 {
     $remote = trim((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'));
     $useCf = !isset($cfg['trust_cloudflare_ip']) || $cfg['trust_cloudflare_ip'] !== false;
-    if ($useCf && !empty($_SERVER['HTTP_CF_RAY'])) {
+    if ($useCf && remote_addr_is_cloudflare($remote)) {
         foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_CF_CONNECTING_IPV6'] as $hdr) {
             if (empty($_SERVER[$hdr])) {
                 continue;
@@ -181,8 +254,7 @@ function rate_limit_file_path(string $clientIp, array $cfg): string
 {
     $siteKey = isset($cfg['rate_limit_site_id']) ? trim((string) $cfg['rate_limit_site_id']) : '';
     if ($siteKey === '') {
-        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
-        $siteKey = $host !== '' ? preg_replace('/[^a-zA-Z0-9._-]+/', '_', $host) : 'default';
+        $siteKey = substr(hash('sha256', __DIR__), 0, 16);
     }
     $dir = __DIR__ . '/.rate-limit';
     if (!is_dir($dir)) {
@@ -467,15 +539,19 @@ $now = time();
 $window = 3600;
 $maxAttemptsPerWindow = 40;
 $maxSuccessPerWindow = 8;
-$rate = rate_load($rateFile, $now, $window);
-if (count($rate['attempts']) >= $maxAttemptsPerWindow) {
-    client_fail('Too many submissions. Please try again later.', 429);
-}
-if (count($rate['success']) >= $maxSuccessPerWindow) {
-    client_fail('Too many messages sent from this address. Please try again later.', 429);
-}
-$rate['attempts'][] = $now;
-rate_save($rateFile, $rate['attempts'], $rate['success']);
+rate_update_locked($rateFile, $now, $window, static function (array &$rate) use (
+    $now,
+    $maxAttemptsPerWindow,
+    $maxSuccessPerWindow
+): void {
+    if (count($rate['attempts']) >= $maxAttemptsPerWindow) {
+        client_fail('Too many submissions. Please try again later.', 429);
+    }
+    if (count($rate['success']) >= $maxSuccessPerWindow) {
+        client_fail('Too many messages sent from this address. Please try again later.', 429);
+    }
+    $rate['attempts'][] = $now;
+});
 
 $turnstileSecret = isset($cfg['turnstile_secret']) ? trim((string) $cfg['turnstile_secret']) : '';
 $parsed = normalize_fields($raw, $honeypots);
@@ -593,8 +669,9 @@ try {
     client_fail('Could not send message. Please try again later.', 500);
 }
 
-$rate['success'][] = $now;
-rate_save($rateFile, $rate['attempts'], $rate['success']);
+rate_update_locked($rateFile, $now, $window, static function (array &$rate) use ($now): void {
+    $rate['success'][] = $now;
+});
 
 if (wants_json()) {
     http_response_code(200);

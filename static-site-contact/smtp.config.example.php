@@ -50,11 +50,11 @@ return [
     'default_mail_subject' => 'Website form submission',
 
     /**
-     * Rate limits: per visitor IP (see resolve_client_ip). Defaults to HTTP_HOST.
+     * Rate limits: per visitor IP (see resolve_client_ip). Site bucket defaults to this install path.
      * Optional overrides:
-     *   trust_cloudflare_ip — use CF-Connecting-IP when CF-Ray is present (default true)
+     *   trust_cloudflare_ip — use CF-Connecting-IP when REMOTE_ADDR is a Cloudflare edge (default true)
      *   trust_forwarded_for — trust X-Forwarded-For only if you set this true explicitly
-     *   rate_limit_site_id — isolate counters when multiple sites share one install path
+     *   rate_limit_site_id — override the default install-path bucket for counters
      */
     // 'rate_limit_site_id' => 'example.com',
     // 'trust_forwarded_for' => false,
