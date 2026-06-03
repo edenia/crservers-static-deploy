@@ -5,7 +5,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 if [[ ! -f contact.php ]] || [[ ! -f composer.json ]]; then
-  echo "Run this from the folder that contains contact.php and composer.json (e.g. ~/DOMAIN/html)." >&2
+  echo "Run this from the folder that contains contact.php and composer.json (e.g. ~/public_html or ~/DOMAIN/html)." >&2
   exit 1
 fi
 
@@ -25,10 +25,22 @@ else
   exit 1
 fi
 
-# InterWorx: prefer account-level ~/private (two levels above DOMAIN/html); fallback to ../private
-ACCOUNT_PRIVATE="$(cd "$DIR/../.." && pwd)/private"
-DOMAIN_PRIVATE="$(cd "$DIR/.." && pwd)/private"
-mkdir -p "$ACCOUNT_PRIVATE" "$DOMAIN_PRIVATE"
+PARENT="$(cd "$DIR/.." && pwd)"
+GRANDPARENT="$(cd "$DIR/../.." && pwd)"
+
+# DOMAIN/html → account ~/private is two levels up; public_html → one level up (../private)
+if [[ "$(basename "$DIR")" == "html" ]]; then
+  ACCOUNT_PRIVATE="$GRANDPARENT/private"
+  DOMAIN_PRIVATE="$PARENT/private"
+else
+  ACCOUNT_PRIVATE="$PARENT/private"
+  DOMAIN_PRIVATE="$PARENT/private"
+fi
+
+mkdir -p "$ACCOUNT_PRIVATE"
+if [[ "$DOMAIN_PRIVATE" != "$ACCOUNT_PRIVATE" ]]; then
+  mkdir -p "$DOMAIN_PRIVATE"
+fi
 
 CFG="$ACCOUNT_PRIVATE/smtp.config.php"
 if [[ ! -f "$CFG" ]]; then

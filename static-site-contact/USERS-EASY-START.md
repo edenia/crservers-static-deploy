@@ -14,7 +14,7 @@ You should have **`contact.php`**, **`composer.json`**, **`composer.lock`**, **`
    cd ~/public_html
    bash install-on-server.sh
    ```
-3. **Edit one file** with your text editor — the script prints the path, usually **`../private/smtp.config.php`** — and set at least:
+3. **Edit one file** with your text editor — the script prints the path (usually **`~/private/smtp.config.php`** from `~/DOMAIN/html`, or **`../private/smtp.config.php`** from `~/public_html`) — and set at least:
    - `smtp_pass` → mailbox password  
    - `mail_to` → where you want form mail to arrive  
    - `smtp_host` / `smtp_user` / `mail_from_email` if they are not already correct for your domain.
@@ -31,7 +31,7 @@ Each production deploy (FTP) should already place **`contact.php`**, **`composer
 
 1. **SSH** into the account → `cd ~/public_html`
 2. Run: `bash install-on-server.sh`
-3. Edit **`../private/smtp.config.php`** as in path A.
+3. Edit the **`smtp.config.php`** path printed by the script (same as path A).
 
 If an older deploy is missing those files, copy them from your repo’s **`utils/contact-form/`** (or from the [canonical bundle](https://github.com/edenia/crservers-static-deploy/tree/main/static-site-contact)) into `public_html`, then run step 2.
 

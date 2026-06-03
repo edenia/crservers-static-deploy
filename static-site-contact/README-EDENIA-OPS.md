@@ -36,8 +36,8 @@ ssh USER@HOST 'cd ~/DOMAIN/html && chmod +x install-on-server.sh && bash install
 
 ## After copy
 
-- **`install-on-server.sh`** runs `composer install --no-dev` and creates **`../private/smtp.config.php`** from the example if missing.
-- Tell the customer to **edit `../private/smtp.config.php`** (mailbox password, `mail_to`, etc.) or set **env vars** if you inject secrets at the panel level.
+- **`install-on-server.sh`** runs `composer install --no-dev` and creates **`~/private/smtp.config.php`** (from `DOMAIN/html`) or **`../private/smtp.config.php`** (from `public_html`).
+- Tell the customer to **edit that config file** (mailbox password, `mail_to`, etc.) or set **env vars** if you inject secrets at the panel level.
 
 ## Keeping in sync
 
