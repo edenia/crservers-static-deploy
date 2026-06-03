@@ -66,7 +66,7 @@ Front-end / v0
 Limits (abuse control)
 ----------------------
 - Up to **50** fields, **100** char keys, **8000** char values, **200k** char total body.
-- Simple **per-IP rate limit** (see code).
+- **Per-IP rate limit:** up to **40 POST attempts** per hour (any outcome) and up to **8 successful sends** per hour (see `contact.php`).
 
 Spam hardening (recommended)
 ----------------------------

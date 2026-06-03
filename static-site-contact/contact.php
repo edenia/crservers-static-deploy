@@ -66,6 +66,77 @@ function client_fake_ok(): never
     exit;
 }
 
+function truncate_utf8(string $s, int $maxChars): string
+{
+    if ($maxChars <= 0) {
+        return '';
+    }
+    if (function_exists('mb_substr')) {
+        return mb_substr($s, 0, $maxChars);
+    }
+    if (strlen($s) <= $maxChars) {
+        return $s;
+    }
+    $chunk = substr($s, 0, $maxChars);
+
+    return (string) preg_replace('/(?:[\x80-\xBF])+$/', '', $chunk) ?: $chunk;
+}
+
+/**
+ * @param list<mixed> $timestamps
+ * @return list<int>
+ */
+function rate_prune_timestamps(array $timestamps, int $now, int $window): array
+{
+    $out = [];
+    foreach ($timestamps as $t) {
+        if (is_numeric($t) && (int) $t > $now - $window) {
+            $out[] = (int) $t;
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * @return array{attempts: list<int>, success: list<int>}
+ */
+function rate_load(string $file, int $now, int $window): array
+{
+    $attempts = [];
+    $success = [];
+    if (is_file($file)) {
+        $raw = @file_get_contents($file);
+        if ($raw !== false) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                if (isset($decoded['attempts']) && is_array($decoded['attempts'])) {
+                    $attempts = rate_prune_timestamps($decoded['attempts'], $now, $window);
+                }
+                if (isset($decoded['success']) && is_array($decoded['success'])) {
+                    $success = rate_prune_timestamps($decoded['success'], $now, $window);
+                } elseif ($attempts === [] && array_is_list($decoded)) {
+                    $success = rate_prune_timestamps($decoded, $now, $window);
+                }
+            }
+        }
+    }
+
+    return ['attempts' => $attempts, 'success' => $success];
+}
+
+/**
+ * @param list<int> $attempts
+ * @param list<int> $success
+ */
+function rate_save(string $file, array $attempts, array $success): void
+{
+    @file_put_contents($file, json_encode([
+        'attempts' => $attempts,
+        'success' => $success,
+    ]), LOCK_EX);
+}
+
 /**
  * Non-empty getenv overrides $cfg keys (SMTP secrets from hosting / injectors).
  *
@@ -278,12 +349,12 @@ function reply_display_name(array $fields): string
         }
         $c = trim($x . ' ' . $y);
         if ($c !== '') {
-            return mb_substr($c, 0, 100);
+            return truncate_utf8($c, 100);
         }
     }
     foreach ($fields as $k => $v) {
         if (stripos($k, 'name') !== false && $v !== '' && !filter_var($v, FILTER_VALIDATE_EMAIL)) {
-            return mb_substr($v, 0, 100);
+            return truncate_utf8($v, 100);
         }
     }
     return '';
@@ -338,24 +409,17 @@ $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 $rateFile = sys_get_temp_dir() . '/cr-contact-' . hash('sha256', $ip) . '.json';
 $now = time();
 $window = 3600;
-$maxPerWindow = 8;
-$times = [];
-if (is_file($rateFile)) {
-    $rawTimes = @file_get_contents($rateFile);
-    if ($rawTimes !== false) {
-        $decoded = json_decode($rawTimes, true);
-        if (is_array($decoded)) {
-            foreach ($decoded as $t) {
-                if (is_numeric($t) && (int) $t > $now - $window) {
-                    $times[] = (int) $t;
-                }
-            }
-        }
-    }
-}
-if (count($times) >= $maxPerWindow) {
+$maxAttemptsPerWindow = 40;
+$maxSuccessPerWindow = 8;
+$rate = rate_load($rateFile, $now, $window);
+if (count($rate['attempts']) >= $maxAttemptsPerWindow) {
     client_fail('Too many submissions. Please try again later.', 429);
 }
+if (count($rate['success']) >= $maxSuccessPerWindow) {
+    client_fail('Too many messages sent from this address. Please try again later.', 429);
+}
+$rate['attempts'][] = $now;
+rate_save($rateFile, $rate['attempts'], $rate['success']);
 
 $turnstileSecret = isset($cfg['turnstile_secret']) ? trim((string) $cfg['turnstile_secret']) : '';
 $parsed = normalize_fields($raw, $honeypots);
@@ -417,7 +481,7 @@ foreach (['subject', '_subject', 'mail_subject'] as $sk) {
     }
 }
 $defaultSub = isset($cfg['default_mail_subject']) ? trim((string) $cfg['default_mail_subject']) : 'Website form submission';
-$subject = $subjectField !== '' ? mb_substr($subjectField, 0, 200) : $defaultSub;
+$subject = $subjectField !== '' ? truncate_utf8($subjectField, 200) : $defaultSub;
 
 $bodyLines = [
     '--- Form submission ---',
@@ -473,8 +537,8 @@ try {
     client_fail('Could not send message. Please try again later.', 500);
 }
 
-$times[] = $now;
-@file_put_contents($rateFile, json_encode($times), LOCK_EX);
+$rate['success'][] = $now;
+rate_save($rateFile, $rate['attempts'], $rate['success']);
 
 if (wants_json()) {
     http_response_code(200);
