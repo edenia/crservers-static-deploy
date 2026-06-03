@@ -120,11 +120,20 @@ function parse_post_payload(): array
             foreach ($j['fields'] as $k => $v) {
                 $out[(string) $k] = $v;
             }
+            $occupied = [];
+            foreach (array_keys($out) as $fk) {
+                $occupied[strtolower((string) $fk)] = true;
+            }
             foreach ($j as $k => $v) {
                 if ($k === 'fields' || !is_scalar($v)) {
                     continue;
                 }
+                $lk = strtolower((string) $k);
+                if (isset($occupied[$lk])) {
+                    continue;
+                }
                 $out[(string) $k] = $v;
+                $occupied[$lk] = true;
             }
             return $out;
         }
@@ -347,8 +356,6 @@ if (is_file($rateFile)) {
 if (count($times) >= $maxPerWindow) {
     client_fail('Too many submissions. Please try again later.', 429);
 }
-$times[] = $now;
-@file_put_contents($rateFile, json_encode($times), LOCK_EX);
 
 $turnstileSecret = isset($cfg['turnstile_secret']) ? trim((string) $cfg['turnstile_secret']) : '';
 $parsed = normalize_fields($raw, $honeypots);
@@ -465,6 +472,9 @@ try {
     error_log('contact.php mail error: ' . $mail->ErrorInfo);
     client_fail('Could not send message. Please try again later.', 500);
 }
+
+$times[] = $now;
+@file_put_contents($rateFile, json_encode($times), LOCK_EX);
 
 if (wants_json()) {
     http_response_code(200);
