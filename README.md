@@ -47,7 +47,7 @@ Because this reusable workflow lives in **another** repository, the caller **can
 | `FTP_HOST` | crservers FTP/FTPS hostname |
 | `FTP_USER` | FTP username |
 | `FTP_PASSWORD` | FTP password |
-| `FTP_REMOTE_PATH` | Remote directory — **must end with `/`** (for example `public_html/yoursite/`) |
+| `FTP_REMOTE_PATH` | Remote directory **relative to the FTP account home** — **must end with `/`** (see [InterWorx paths](#interworx--crservers-ftp-paths) below; e.g. `example.com/html/`) |
 
 ### Optional repository variable
 
@@ -104,6 +104,65 @@ On `push`, those comparisons are false because the inputs are absent.
 | `dry_run` | `false` | FTP no-op |
 | `clean_deploy` | `false` | Wipes remote `FTP_REMOTE_PATH` |
 | `site_url` | *(empty)* | Pass `vars.SITE_URL` from caller for summary |
+
+## New site checklist (customer repo)
+
+Use this when onboarding a new static or Next.js customer repository.
+
+1. **Next.js static export** — in `next.config` (or `next.config.mjs`):
+   - `output: 'export'`
+   - `images: { unoptimized: true }` if the app uses `next/image`
+2. **`package.json`** — `packageManager` (matches `pnpm-lock.yaml`), `verify:static-out` (e.g. `test -f out/index.html`)
+3. **`public/.htaccess`** — Apache rules for shared hosting (see [below](#recommended-publichtaccess-next-static-export))
+4. **Caller workflow** — `.github/workflows/deploy-static-site.yml` calling `edenia/crservers-static-deploy/.../deploy-static-site.yml@v1` with FTP secrets mapped explicitly
+5. **GitHub Actions** — secrets `FTP_*`; optional variable `SITE_URL` (public URL for deploy summaries only)
+6. **First deploy** — run workflow with **dry_run** once, then production; confirm the live site (not only a green Actions run)
+
+## InterWorx / crservers FTP paths
+
+On **InterWorx** shared hosting, the FTP user is usually **chrooted to the account home** (e.g. `/home/ACCOUNT/`). [FTP-Deploy-Action](https://github.com/SamKirkland/FTP-Deploy-Action) treats `FTP_REMOTE_PATH` as **relative to that FTP root**, not as an absolute path on the server.
+
+### Use a relative path (required)
+
+| `FTP_REMOTE_PATH` value | Result |
+|-------------------------|--------|
+| `example.com/html/` | Correct — files land in `/home/ACCOUNT/example.com/html/` |
+| `/home/ACCOUNT/example.com/html/` | Wrong — uploads often go outside the tree you see over SSH; Actions may still succeed |
+| `/home/ACCOUNT/html/` | Wrong for the primary domain — often the account default “Test Page”, not the domain vhost |
+
+**Rule:** Set `FTP_REMOTE_PATH` to the domain’s web root **relative to the account home**, with a trailing slash. Confirm in **SiteWorx** (domain → home / document root) or on the server:
+
+```bash
+# SSH (paths on disk)
+ls /home/ACCOUNT/DOMAIN/html/
+
+# After a successful deploy you should see at least:
+#   index.html  _next/  .htaccess
+```
+
+### Typical layout (primary domain)
+
+```text
+/home/ACCOUNT/                 ← FTP login root
+├── html/                      ← account default page (crservers “Test Page”) — usually NOT the live domain
+└── DOMAIN/                    ← e.g. example.com/
+    ├── html/                  ← document root for https://DOMAIN/  ← deploy here
+    └── iworx-backup/
+```
+
+Some accounts use `domains/DOMAIN/html/` instead of `DOMAIN/html/`. Always take the path from SiteWorx or `ls` on the server, then express it **relative to `/home/ACCOUNT/`** in the secret.
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---------|----------------|
+| Actions deploy succeeds; live URL still shows crservers “Test Page” | Wrong `FTP_REMOTE_PATH` (wrong folder or absolute path) |
+| SSH into `…/DOMAIN/html/` shows only placeholder files (`crservers-logo.*`, old `index.html`) | Deploy never hit that directory — fix path and redeploy |
+| `find /home/ACCOUNT -name '_next' -type d` finds `_next` under `html/` or a nested `home/…` path | Stray upload from an absolute path — safe to delete after fixing the secret |
+
+**Verify the correct folder:** after deploy, `index.html` in the domain `html/` should be small (static export) and include `_next/`. Check the public URL `Last-Modified` or page title changes.
+
+**Verify the public site:** `curl -sI https://DOMAIN/ | grep -i last-modified` and confirm content matches the app (not the default hosting page).
 
 ## Publishing (Edenia / crservers.com)
 
