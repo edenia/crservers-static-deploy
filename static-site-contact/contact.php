@@ -124,15 +124,25 @@ function rate_decode_file(string $raw, int $now, int $window): array
 /**
  * @param callable(array{attempts: list<int>, success: list<int>}): void $mutator
  */
-function rate_update_locked(string $file, int $now, int $window, callable $mutator): void
+function rate_update_locked(string $file, int $now, int $window, callable $mutator, bool $fatalOnLockError = true): void
 {
     $fp = @fopen($file, 'c+');
     if ($fp === false) {
-        client_fail('Server busy. Please try again later.', 503);
+        if ($fatalOnLockError) {
+            client_fail('Server busy. Please try again later.', 503);
+        }
+        error_log('contact.php: could not open rate-limit file');
+
+        return;
     }
     if (!flock($fp, LOCK_EX)) {
         fclose($fp);
-        client_fail('Server busy. Please try again later.', 503);
+        if ($fatalOnLockError) {
+            client_fail('Server busy. Please try again later.', 503);
+        }
+        error_log('contact.php: could not lock rate-limit file');
+
+        return;
     }
     $raw = stream_get_contents($fp);
     $rate = rate_decode_file($raw === false ? '' : $raw, $now, $window);
@@ -197,14 +207,63 @@ function cloudflare_ipv4_cidrs(): array
     ];
 }
 
-function remote_addr_is_cloudflare(string $remoteAddr): bool
+/**
+ * @return list<string>
+ */
+function cloudflare_ipv6_cidrs(): array
 {
-    if (!filter_var($remoteAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+    return [
+        '2400:cb00::/32',
+        '2606:4700::/32',
+        '2803:f800::/32',
+        '2405:b500::/32',
+        '2405:8100::/32',
+        '2a06:98c0::/29',
+        '2c0f:f248::/32',
+    ];
+}
+
+function ipv6_in_cidr(string $ip, string $cidr): bool
+{
+    $parts = explode('/', $cidr, 2);
+    if (count($parts) !== 2) {
         return false;
     }
-    foreach (cloudflare_ipv4_cidrs() as $cidr) {
-        if (ipv4_in_cidr($remoteAddr, $cidr)) {
-            return true;
+    $bits = (int) $parts[1];
+    $ipBin = inet_pton($ip);
+    $subBin = inet_pton($parts[0]);
+    if ($ipBin === false || $subBin === false || $bits < 0 || $bits > 128) {
+        return false;
+    }
+    $fullBytes = (int) floor($bits / 8);
+    $remainder = $bits % 8;
+    if ($fullBytes > 0 && substr($ipBin, 0, $fullBytes) !== substr($subBin, 0, $fullBytes)) {
+        return false;
+    }
+    if ($remainder === 0) {
+        return true;
+    }
+    $mask = (0xFF << (8 - $remainder)) & 0xFF;
+
+    return (ord($ipBin[$fullBytes]) & $mask) === (ord($subBin[$fullBytes]) & $mask);
+}
+
+function remote_addr_is_cloudflare(string $remoteAddr): bool
+{
+    if (filter_var($remoteAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        foreach (cloudflare_ipv4_cidrs() as $cidr) {
+            if (ipv4_in_cidr($remoteAddr, $cidr)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+    if (filter_var($remoteAddr, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+        foreach (cloudflare_ipv6_cidrs() as $cidr) {
+            if (ipv6_in_cidr($remoteAddr, $cidr)) {
+                return true;
+            }
         }
     }
 
@@ -671,7 +730,7 @@ try {
 
 rate_update_locked($rateFile, $now, $window, static function (array &$rate) use ($now): void {
     $rate['success'][] = $now;
-});
+}, false);
 
 if (wants_json()) {
     http_response_code(200);
