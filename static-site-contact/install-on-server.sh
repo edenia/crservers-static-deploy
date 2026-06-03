@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# crservers.com — one-time setup for contact.php (run from public_html, next to contact.php)
+# crservers.com — one-time setup for contact.php (run from the site html root, next to contact.php)
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
 if [[ ! -f contact.php ]] || [[ ! -f composer.json ]]; then
-  echo "Run this from the folder that contains contact.php and composer.json (usually ~/public_html)." >&2
+  echo "Run this from the folder that contains contact.php and composer.json (e.g. ~/DOMAIN/html)." >&2
   exit 1
 fi
 
@@ -25,9 +25,12 @@ else
   exit 1
 fi
 
-PRIVATE="$(cd .. && pwd)/private"
-mkdir -p "$PRIVATE"
-CFG="$PRIVATE/smtp.config.php"
+# InterWorx: prefer account-level ~/private (two levels above DOMAIN/html); fallback to ../private
+ACCOUNT_PRIVATE="$(cd "$DIR/../.." && pwd)/private"
+DOMAIN_PRIVATE="$(cd "$DIR/.." && pwd)/private"
+mkdir -p "$ACCOUNT_PRIVATE" "$DOMAIN_PRIVATE"
+
+CFG="$ACCOUNT_PRIVATE/smtp.config.php"
 if [[ ! -f "$CFG" ]]; then
   cp smtp.config.example.php "$CFG"
   chmod 600 "$CFG" || true

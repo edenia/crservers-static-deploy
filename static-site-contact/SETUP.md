@@ -70,7 +70,7 @@ chmod 600 ~/private/smtp.config.php
 nano ~/private/smtp.config.php   # set smtp_*, mail_from_*, mail_to, etc.
 ```
 
-`contact.php` loads **`/home/ACCOUNT/private/smtp.config.php`** (one level above `public_html`).
+`contact.php` loads **`/home/ACCOUNT/private/smtp.config.php`** when the site lives under **`~/DOMAIN/html/`** (also checks **`~/DOMAIN/private/`** as a fallback).
 
 ### Option B — Environment variables (good if your host injects env into PHP)
 
