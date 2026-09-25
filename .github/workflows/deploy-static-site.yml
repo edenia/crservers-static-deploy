@@ -167,7 +167,26 @@ jobs:
             */) ;;
             *) echo "::error::FTP_REMOTE_PATH must end with a forward slash (e.g. public_html/site/)."; missing=1 ;;
           esac
-          exit "$missing"
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          # Normalize a leading "./" (e.g. "./" or "./site/"). FTP-Deploy-Action's
+          # underlying FTP client walks server-dir segment by segment and issues MKD
+          # for each one - a leading "./" produces a literal "." segment, and many
+          # FTP servers (confirmed on InterWorx/ProFTPd) correctly reject "MKD ." with
+          # 550 since "." already exists. That 550 then surfaces from the action as a
+          # confusing connection-reset-style failure instead of a clear path error.
+          # "./" and "/" both mean "the FTP account's own jail root", so normalize here
+          # rather than making every caller repo get the exact string right.
+          normalized="$FTP_REMOTE_PATH"
+          case "$normalized" in
+            ./*) normalized="${normalized#.}" ;;
+          esac
+          if [ "$normalized" != "$FTP_REMOTE_PATH" ]; then
+            echo "::warning::FTP_REMOTE_PATH ('$FTP_REMOTE_PATH') starts with './', which some FTP servers reject when FTP-Deploy-Action creates a literal '.' directory (seen as 550/connection-reset failures on InterWorx). Using '$normalized' for this deploy - update the FTP_REMOTE_PATH secret to '$normalized' to remove this warning."
+          fi
+          echo "FTP_REMOTE_PATH_NORMALIZED=$normalized" >> "$GITHUB_ENV"
 
       - name: Deploy via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.4.0
@@ -177,7 +196,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ${{ inputs.ftp_protocol }}
           local-dir: ${{ inputs.ftp_local_dir }}
-          server-dir: ${{ secrets.FTP_REMOTE_PATH }}
+          server-dir: ${{ env.FTP_REMOTE_PATH_NORMALIZED }}
           log-level: ${{ inputs.dry_run && 'verbose' || 'standard' }}
           dry-run: ${{ inputs.dry_run }}
           dangerous-clean-slate: ${{ inputs.clean_deploy }}
