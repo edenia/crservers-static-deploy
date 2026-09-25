@@ -47,7 +47,7 @@ Because this reusable workflow lives in **another** repository, the caller **can
 | `FTP_HOST` | crservers FTP/FTPS hostname |
 | `FTP_USER` | FTP username |
 | `FTP_PASSWORD` | FTP password |
-| `FTP_REMOTE_PATH` | Remote directory **relative to the FTP account home** — **must end with `/`** (see [InterWorx paths](#interworx--crservers-ftp-paths) below; e.g. `example.com/html/`) |
+| `FTP_REMOTE_PATH` | Remote directory **relative to the FTP account's jail root** — **must end with `/`**, and must **not** start with `./` (see [InterWorx paths](#interworx--crservers-ftp-paths) below; e.g. `example.com/html/`, or `/` if the FTP account is already scoped directly to the deploy folder) |
 
 ### Optional repository variable
 
@@ -127,11 +127,13 @@ On **InterWorx** shared hosting, the FTP user is usually **chrooted to the accou
 
 | `FTP_REMOTE_PATH` value | Result |
 |-------------------------|--------|
-| `example.com/html/` | Correct — files land in `/home/ACCOUNT/example.com/html/` |
+| `example.com/html/` | Correct — files land in `/home/ACCOUNT/example.com/html/` (shared FTP account jailed to the account home) |
+| `/` | Correct **only** if the FTP account itself is already jailed directly to the deploy folder (e.g. a dedicated restricted FTP account created for CI, chrooted straight to `.../html/dev/`) — there is nothing left to descend into, so `/` is the whole answer |
+| `./` | **Do not use** — looks equivalent to `/` but is not: FTP-Deploy-Action's underlying client walks the path segment by segment and tries to `MKD` a literal `.` directory, which InterWorx/ProFTPd correctly rejects with `550` since `.` already exists. The workflow auto-normalizes `./` → `/` and emits an `::warning::` annotation on the run, but fix the secret directly to remove the warning |
 | `/home/ACCOUNT/example.com/html/` | Wrong — uploads often go outside the tree you see over SSH; Actions may still succeed |
 | `/home/ACCOUNT/html/` | Wrong for the primary domain — often the account default “Test Page”, not the domain vhost |
 
-**Rule:** Set `FTP_REMOTE_PATH` to the domain’s web root **relative to the account home**, with a trailing slash. Confirm in **SiteWorx** (domain → home / document root) or on the server:
+**Rule:** Set `FTP_REMOTE_PATH` to the domain’s web root **relative to the FTP account's own jail root**, with a trailing slash and no leading `./`. Confirm in **SiteWorx** (domain → home / document root) or on the server:
 
 ```bash
 # SSH (paths on disk)
@@ -160,6 +162,7 @@ Some accounts use `domains/DOMAIN/html/` instead of `DOMAIN/html/`. Always take 
 | Actions deploy succeeds; live URL still shows crservers “Test Page” | Wrong `FTP_REMOTE_PATH` (wrong folder or absolute path) |
 | SSH into `…/DOMAIN/html/` shows only placeholder files (`crservers-logo.*`, old `index.html`) | Deploy never hit that directory — fix path and redeploy |
 | `find /home/ACCOUNT -name '_next' -type d` finds `_next` under `html/` or a nested `home/…` path | Stray upload from an absolute path — safe to delete after fixing the secret |
+| Deploy fails with `read ECONNRESET (data socket)` right after the first “creating folder” log line, even though FTPS/TLS login clearly succeeds | `FTP_REMOTE_PATH` is set to `./` instead of `/`. Server-side logs show a clean TLS login followed by `MKD .../. ` → `550` — the action tries to create a literal `.` directory, which InterWorx/ProFTPd rejects. Not a firewall/TLS/passive-port issue. The workflow now auto-normalizes this (check the run's `::warning::` annotations) — update the secret to `/` to remove the warning |
 
 **Verify the correct folder:** after deploy, `index.html` in the domain `html/` should be small (static export) and include `_next/`. Check the public URL `Last-Modified` or page title changes.
 
