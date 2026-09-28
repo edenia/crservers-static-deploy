@@ -86,6 +86,18 @@ jobs:
 
 On `push`, those comparisons are false because the inputs are absent.
 
+### Verbose logging for a real deploy
+
+`dry_run: true` always logs verbosely, but that skips the actual upload. To get a full FTP command/response transcript on a **real** deploy (e.g. to correlate a failure against server-side FTP/TLS logs), set `ftp_log_level: verbose` and leave `dry_run` at its default (`false`):
+
+```yaml
+    with:
+      ftp_log_level: verbose
+      site_url: ${{ vars.SITE_URL }}
+```
+
+Available starting with the `ftp_log_level` input (not present in workflow revisions before it was added — pin a tag that includes it). Revert to the default (or omit the input) once you have the log you need, since verbose logging prints the full FTP transcript on every run.
+
 ### Callable workflow inputs (defaults)
 
 | Input | Default | Notes |
@@ -101,6 +113,7 @@ On `push`, those comparisons are false because the inputs are absent.
 | `ftp_protocol` | `ftps` | |
 | `ftp_local_dir` | `./out/` | Must end with `/` |
 | `ftp_timeout_ms` | `1200000` | |
+| `ftp_log_level` | `standard` | FTP-Deploy-Action log verbosity for real deploys - `minimal`\|`standard`\|`verbose`. Set to `verbose` to get the full FTP command/response transcript for a real (non-dry-run) deploy, e.g. to correlate against server-side FTP logs. `dry_run: true` always forces `verbose` regardless of this input. |
 | `dry_run` | `false` | FTP no-op |
 | `clean_deploy` | `false` | Wipes remote `FTP_REMOTE_PATH` |
 | `site_url` | *(empty)* | Pass `vars.SITE_URL` from caller for summary |
