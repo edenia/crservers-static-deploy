@@ -58,6 +58,11 @@ on:
         type: number
         required: false
         default: 1200000
+      ftp_log_level:
+        description: FTP-Deploy-Action log-level for real (non-dry-run) deploys - minimal|standard|verbose. Use verbose to correlate a run against server-side FTP/TLS logs. dry_run always forces verbose regardless of this input.
+        type: string
+        required: false
+        default: "standard"
       dry_run:
         description: FTP dry run (no upload)
         type: boolean
@@ -197,7 +202,7 @@ jobs:
           protocol: ${{ inputs.ftp_protocol }}
           local-dir: ${{ inputs.ftp_local_dir }}
           server-dir: ${{ env.FTP_REMOTE_PATH_NORMALIZED }}
-          log-level: ${{ inputs.dry_run && 'verbose' || 'standard' }}
+          log-level: ${{ inputs.dry_run && 'verbose' || inputs.ftp_log_level }}
           dry-run: ${{ inputs.dry_run }}
           dangerous-clean-slate: ${{ inputs.clean_deploy }}
           timeout: ${{ inputs.ftp_timeout_ms }}
