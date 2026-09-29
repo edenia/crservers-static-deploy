@@ -44,10 +44,23 @@ Because this reusable workflow lives in **another** repository, the caller **can
 
 | Secret | Description |
 |--------|-------------|
-| `FTP_HOST` | crservers FTP/FTPS hostname |
+| `FTP_HOST` | crservers FTP/FTPS hostname — see [FTPS hostname and certificate](#ftps-hostname-and-certificate) below before assuming this is `ftp.customerdomain.com` |
 | `FTP_USER` | FTP username |
 | `FTP_PASSWORD` | FTP password |
 | `FTP_REMOTE_PATH` | Remote directory **relative to the FTP account's jail root** — **must end with `/`**, and must **not** start with `./` (see [InterWorx paths](#interworx--crservers-ftp-paths) below; e.g. `example.com/html/`, or `/` if the FTP account is already scoped directly to the deploy folder) |
+
+### FTPS hostname and certificate
+
+On shared InterWorx nodes, **ProFTPd serves a single TLS certificate for the whole node** (CN matching the node's own hostname, e.g. `nodeXX.crservers.com`), not a per-domain certificate. If `FTP_HOST` is set to the customer's domain (`ftp.customerdomain.com`) or a `mail.` subdomain, FTPS certificate verification can fail or the TLS handshake can behave unpredictably depending on SNI support, even though plain FTP or an FTPS client with relaxed verification would connect fine.
+
+**Use the node's own hostname as `FTP_HOST`** (e.g. `iwx41.crservers.com`) unless you've confirmed the customer's domain is included as a SAN on that node's certificate. Confirm with:
+
+```bash
+echo | openssl s_client -connect NODE_HOSTNAME:21 -starttls ftp -servername NODE_HOSTNAME 2>/dev/null \
+  | openssl x509 -noout -subject -ext subjectAltName
+```
+
+If the customer's FTP account is jailed correctly, this has no effect on where files land — `FTP_REMOTE_PATH` (relative to the jail root) still controls that independently of which hostname you connect to.
 
 ### Optional repository variable
 
@@ -176,10 +189,124 @@ Some accounts use `domains/DOMAIN/html/` instead of `DOMAIN/html/`. Always take 
 | SSH into `…/DOMAIN/html/` shows only placeholder files (`crservers-logo.*`, old `index.html`) | Deploy never hit that directory — fix path and redeploy |
 | `find /home/ACCOUNT -name '_next' -type d` finds `_next` under `html/` or a nested `home/…` path | Stray upload from an absolute path — safe to delete after fixing the secret |
 | Deploy fails with `read ECONNRESET (data socket)` right after the first “creating folder” log line, even though FTPS/TLS login clearly succeeds | `FTP_REMOTE_PATH` is set to `./` instead of `/`. Server-side logs show a clean TLS login followed by `MKD .../. ` → `550` — the action tries to create a literal `.` directory, which InterWorx/ProFTPd rejects. Not a firewall/TLS/passive-port issue. The workflow now auto-normalizes this (check the run's `::warning::` annotations) — update the secret to `/` to remove the warning |
+| `ECONNRESET (data socket)` persists with `FTP_REMOTE_PATH` already correct (`/`, no leading `./`), and `ftp_log_level: verbose` shows no FTP command/response transcript at all | `log-level: verbose` only prints FTP-Deploy-Action's own sync-decision logging (“creating folder X”, “uploading file Y”) — it does **not** expose the underlying `basic-ftp` library's raw protocol trace. See [FTP protocol diagnostics](#ftp-protocol-diagnostics) below for a standalone workflow that does |
 
 **Verify the correct folder:** after deploy, `index.html` in the domain `html/` should be small (static export) and include `_next/`. Check the public URL `Last-Modified` or page title changes.
 
 **Verify the public site:** `curl -sI https://DOMAIN/ | grep -i last-modified` and confirm content matches the app (not the default hosting page).
+
+### FTP protocol diagnostics
+
+FTP-Deploy-Action's `log-level: verbose` is scoped to the `@samkirkland/ftp-deploy` package's own sync logic — it never surfaces the raw FTP command/response exchange (confirmed against upstream: [SamKirkland/FTP-Deploy-Action#529](https://github.com/SamKirkland/FTP-Deploy-Action/issues/529)). When a failure needs correlating against server-side FTP/TLS logs (e.g. an `ECONNRESET` whose cause isn't one of the known ones above), use a standalone diagnostic workflow that talks to `basic-ftp` (the library the action wraps) directly, with its own protocol tracing enabled:
+
+```yaml
+name: 🔍 FTPS diagnostic
+on: workflow_dispatch
+
+jobs:
+  ftp-diagnostic:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [exact-repro, latest-v6]
+    steps:
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Create isolated dependency directory
+        run: |
+          DIAG_DIR="$(mktemp -d)"
+          echo "DIAG_DIR=$DIAG_DIR" >> "$GITHUB_ENV"
+          cd "$DIAG_DIR" && npm init -y >/dev/null
+
+      - name: Install exact basic-ftp bundled by FTP-Deploy-Action@v4.4.0
+        if: matrix.variant == 'exact-repro'
+        working-directory: ${{ env.DIAG_DIR }}
+        run: |
+          # Verified directly from FTP-Deploy-Action@v4.4.0's own package-lock.json -
+          # this is the exact version bundled into that release's dist/index.js.
+          # If you're pinned to a different FTP-Deploy-Action tag, re-check its
+          # package-lock.json for the "node_modules/basic-ftp" entry before reusing this.
+          npm install basic-ftp@5.0.5 --no-save
+          echo "BASIC_FTP_VERSION=5.0.5" >> "$GITHUB_ENV"
+
+      - name: Install latest basic-ftp v6 for comparison
+        if: matrix.variant == 'latest-v6'
+        working-directory: ${{ env.DIAG_DIR }}
+        run: |
+          npm install basic-ftp@6 --no-save
+          echo "BASIC_FTP_VERSION=$(node -p "require('basic-ftp/package.json').version")" >> "$GITHUB_ENV"
+
+      - name: Run raw FTPS trace (${{ matrix.variant }}, basic-ftp@${{ env.BASIC_FTP_VERSION }})
+        working-directory: ${{ env.DIAG_DIR }}
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_REMOTE_PATH: ${{ secrets.FTP_REMOTE_PATH }}
+          RUN_TAG: diag-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.variant }}
+        run: |
+          echo "[diag] variant=${{ matrix.variant }} basic-ftp=$BASIC_FTP_VERSION"
+          cat <<'EOF' > ftp-diag.mjs
+          import { Client } from "basic-ftp";
+          import { Readable } from "stream";
+
+          const client = new Client(30000);
+          client.ftp.verbose = true; // raw protocol trace; PASS is auto-redacted by basic-ftp
+
+          const testDir = process.env.RUN_TAG; // unique per run/matrix leg, safe to create+remove
+          const testFile = "diag-test.txt";
+
+          try {
+            console.log(`[diag] connecting to ${process.env.FTP_HOST} (ftps, cert verification ON)`);
+            await client.access({
+              host: process.env.FTP_HOST,
+              user: process.env.FTP_USER,
+              password: process.env.FTP_PASSWORD,
+              secure: true,
+              secureOptions: {
+                rejectUnauthorized: true,
+                servername: process.env.FTP_HOST,
+              },
+            });
+
+            const remoteDir = (process.env.FTP_REMOTE_PATH || "/").replace(/\/$/, "") || "/";
+            console.log(`[diag] cd ${remoteDir}`);
+            await client.cd(remoteDir);
+
+            console.log(`[diag] ensureDir ${testDir}`);
+            await client.ensureDir(testDir);
+
+            console.log("[diag] uploading a small test file into it");
+            const body = Readable.from([`diagnostic upload ${new Date().toISOString()}\n`]);
+            await client.uploadFrom(body, testFile);
+
+            console.log("[diag] SUCCESS - cleaning up this run's test folder only");
+            await client.cd("..");
+            await client.removeDir(testDir);
+          } catch (err) {
+            console.error("[diag] FAILED:", err);
+            process.exitCode = 1;
+          } finally {
+            client.close();
+          }
+          EOF
+          node ftp-diag.mjs
+```
+
+Notes:
+
+- **Isolated dependency directory** (`mktemp -d` + fresh `npm init`) so this never touches the caller repo's own `package.json`/`node_modules`.
+- **Unique remote test folder per run and matrix leg** (`diag-<run_id>-<attempt>-<variant>`) so concurrent runs/legs can't interfere with each other's upload or cleanup, and cleanup only ever removes the exact folder+file this run created.
+- **`basic-ftp`'s built-in verbose trace redacts `PASS`** (`> PASS ###`) automatically — no extra redaction needed beyond GitHub's own secret masking.
+- **FTPS and full certificate verification are preserved** (`secure: true`, `rejectUnauthorized: true`, explicit `servername`) — this diagnostic does not relax security to get a trace.
+- To find the exact `basic-ftp` version bundled by a *different* pinned `FTP-Deploy-Action` tag, don't rely on resolving `@samkirkland/ftp-deploy`'s semver range today (a newer patch may have been published since that tag was built). Instead check the actual pinned entry:
+  ```bash
+  curl -sS "https://raw.githubusercontent.com/SamKirkland/FTP-Deploy-Action/<TAG>/package-lock.json" \
+    | grep -A2 '"node_modules/basic-ftp"'
+  ```
 
 ## Publishing (Edenia / crservers.com)
 

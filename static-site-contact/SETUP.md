@@ -104,6 +104,35 @@ In **NodeWorx / DNS** for the domain:
 
 This reduces spam-folder placement for form mail.
 
+### Hybrid mail domains (mailbox on crservers, real mail hosted elsewhere)
+
+Some domains have their **real** mailboxes on an external provider (Microsoft 365, Google Workspace, etc. — check the domain's `MX` record) while the `forms@` sending mailbox lives on the InterWorx account purely to send form mail via SMTP. In that case the domain's existing SPF record typically authorizes **only** the external provider, and iwx-originated mail will fail SPF until you add the InterWorx node's own SPF mechanism alongside it:
+
+```text
+# Before (example: mail hosted on Microsoft 365 only)
+v=spf1 include:spf.protection.outlook.com -all
+
+# After (preserves the existing provider, adds the sending node)
+v=spf1 include:spf.protection.outlook.com include:_spf.crservers.com -all
+```
+
+`_spf.crservers.com` authorizes crservers' shared sending IPs; swap in the equivalent record if the form is hosted on a different provider's node. Always **send the exact before/after diff to the client for approval before applying** — this is a DNS change on a domain you don't own the mailflow for. Keep the existing `-all` (hard fail) and don't drop the client's current include.
+
+Check DMARC alignment too (`_dmarc.DOMAIN` TXT record): if `adkim=s`/`aspf=s` (strict alignment) and DKIM is already correctly signing with `d=DOMAIN` from the InterWorx side, mail can pass DMARC via DKIM alignment alone even before the SPF record is updated — the SPF addition is still worth doing since some spam filters penalize a hard SPF fail independently of DMARC.
+
+### Confirm mail actually reaches the destination (not just "accepted")
+
+If the domain is a hybrid setup like above, a `250` response from your own SMTP submission only means the **local** mail server accepted the message for delivery — it does **not** prove the message reached the external mailbox. Before declaring the integration done, check the sending server's mail log for the actual remote-delivery outcome, e.g. on InterWorx/qmail:
+
+```bash
+grep -i 'to remote info@DOMAIN' /var/log/send/current | tail -5
+# Look for a subsequent "delivery N: success: ..." line naming the destination's
+# mail server (e.g. an outlook.com / google.com hostname), not just the initial
+# "starting delivery" line.
+```
+
+If the domain instead has **no** external MX (mail fully hosted on the same InterWorx account) and the destination mailbox doesn't exist there, mail can bounce locally without ever leaving the server — confirm the destination mailbox exists, or that the domain is correctly configured for local delivery, before relying on `mail_to`.
+
 ---
 
 ## 7. Smoke test
@@ -149,6 +178,41 @@ Do **not** ship a public form with only a honeypot — bots will find it.
 | **Watch mail** | If spam increases, enable Turnstile first, then tune hosting rules. |
 
 **v0:** use the copy-paste prompt **`utils/contact-form/V0-FORM-PROMPT.md`** so generated React forms POST correctly to `/contact.php`.
+
+### Client has no Cloudflare account yet
+
+**Preferred: have the client create their own free Cloudflare account**, then invite the agency operator as a member (Account → Members → Invite) to create/configure the Turnstile widget on their behalf. This is no slower than creating a widget directly, keeps the widget under the client's own account from day one, and avoids any key rotation later. Turnstile doesn't require the protected domain's DNS/nameservers to be on Cloudflare at all — it's a standalone client-side widget plus a server-side API call, so this has no impact on the domain's existing DNS/hosting.
+
+**Only as a time-boxed stopgap** if the client genuinely cannot create an account yet: Cloudflare's Self-Serve Subscription Agreement (§2.2.1(a)) prohibits signing up for its services "on behalf of a third party" without Cloudflare's express written permission — that's what the formal Agency/Partner Program exists for. Hosting a client's widget under the agency's own regular account is therefore **not a ToS-clean standing pattern**; only do it short-term, with the client's awareness, and migrate off it promptly:
+
+- Confirm with the client that this is temporary before doing it.
+- Note in your handoff that the widget is agency-owned so it's easy to find and retire later.
+- Migrate to the client's own account **as soon as they have one**: recreate the widget there and swap **both** keys (site key in the front-end, secret in `smtp.config.php`/env) — no code changes needed, just key rotation.
+- If this keeps recurring across clients, that's a signal to push for client-owned accounts up front, or to formally enroll in Cloudflare's Agency Partner Program rather than relying on ad hoc agency accounts.
+
+### Verifying reject-on-missing/invalid-token without a live widget
+
+Cloudflare publishes fixed [testing sitekey/secret pairs](https://developers.cloudflare.com/turnstile/troubleshooting/testing/) that work without any account or real widget, useful for confirming the endpoint's captcha behavior before the real widget is wired up front-end:
+
+| Purpose | Secret key |
+|---------|------------|
+| Always fails verification | `2x0000000000000000000000000000AA` |
+| Always passes verification | `1x0000000000000000000000000000AA` (only works with a token actually generated by the matching test sitekey in a real browser — an arbitrary string won't pass) |
+
+With a non-empty `turnstile_secret` configured (even a test one), confirm both rejection paths, then **revert to `''` until the real widget is live** so real visitors without a token aren't blocked:
+
+```bash
+# Missing token -> expect 400 "Captcha verification missing."
+curl -sS -X POST 'https://yourdomain.com/contact.php' \
+  -H 'X-Requested-With: XMLHttpRequest' -H 'Accept: application/json' \
+  -F 'email=test@example.com' -F 'message=no token' -F 'name=Test'
+
+# Invalid token against the always-fail secret -> expect 400 "Captcha verification failed."
+curl -sS -X POST 'https://yourdomain.com/contact.php' \
+  -H 'X-Requested-With: XMLHttpRequest' -H 'Accept: application/json' \
+  -F 'email=test@example.com' -F 'message=invalid token' -F 'name=Test' \
+  -F 'cf-turnstile-response=garbage-token'
+```
 
 ---
 
