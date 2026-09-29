@@ -181,10 +181,14 @@ Do **not** ship a public form with only a honeypot — bots will find it.
 
 ### Client has no Cloudflare account yet
 
-If the client doesn't have their own Cloudflare account, it's fine to host the Turnstile widget **temporarily under the agency's own account** — Turnstile doesn't require the protected domain's DNS/nameservers to be on Cloudflare at all, it's a standalone client-side widget plus a server-side API call. Just:
+**Preferred: have the client create their own free Cloudflare account**, then invite the agency operator as a member (Account → Members → Invite) to create/configure the Turnstile widget on their behalf. This is no slower than creating a widget directly, keeps the widget under the client's own account from day one, and avoids any key rotation later. Turnstile doesn't require the protected domain's DNS/nameservers to be on Cloudflare at all — it's a standalone client-side widget plus a server-side API call, so this has no impact on the domain's existing DNS/hosting.
 
-- Note in your handoff that the widget is agency-owned so it's easy to find later.
-- When the client sets up their own Cloudflare account, recreate the widget there and swap **both** keys (site key in the front-end, secret in `smtp.config.php`/env) — no code changes needed, just key rotation.
+**Only as a time-boxed stopgap** if the client genuinely cannot create an account yet: Cloudflare's Self-Serve Subscription Agreement (§2.2.1(a)) prohibits signing up for its services "on behalf of a third party" without Cloudflare's express written permission — that's what the formal Agency/Partner Program exists for. Hosting a client's widget under the agency's own regular account is therefore **not a ToS-clean standing pattern**; only do it short-term, with the client's awareness, and migrate off it promptly:
+
+- Confirm with the client that this is temporary before doing it.
+- Note in your handoff that the widget is agency-owned so it's easy to find and retire later.
+- Migrate to the client's own account **as soon as they have one**: recreate the widget there and swap **both** keys (site key in the front-end, secret in `smtp.config.php`/env) — no code changes needed, just key rotation.
+- If this keeps recurring across clients, that's a signal to push for client-owned accounts up front, or to formally enroll in Cloudflare's Agency Partner Program rather than relying on ad hoc agency accounts.
 
 ### Verifying reject-on-missing/invalid-token without a live widget
 
